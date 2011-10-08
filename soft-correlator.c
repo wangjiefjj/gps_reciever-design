@@ -17,7 +17,7 @@
  * 02110-1301 USA.
  */
 
-#include <fftw3.h>
+#include "fftw3.h"
 #include <stdio.h>
 
 #define TRACE 0
@@ -177,15 +177,37 @@ static int cacode(int chip, int tap1, int tap2)
 	return (state ^ (state >> tap1) ^ (state >> tap2)) & 1;
 }
 
-static void read_samples(fftw_complex *data, unsigned int data_len)
+static void read_samples(fftw_complex *data, unsigned int data_len, char *pathname)
 {
-	unsigned int i;
-	float buf[2];
-	for(i = 0; i < data_len; ++i)
-	{
-		fread(buf, sizeof(float), 2, stdin);
-		data[i][0] = buf[0];
-		data[i][1] = buf[1];
+	static char raw[16*16*1024];
+	char s[80];
+	unsigned int i=0;
+	FILE *fp = fopen(pathname, "r");
+
+	while(fgets(s, 80, fp)) {
+		int j;
+		//assert(((s[0]-'0')<<8)+((s[1]-'0')<<7)+((s[2]-'0')<<6)+((s[3]-'0')<<5)==(i&0x1E0));
+		for (j=35; j>3; j--) raw[i++] = s[j]-'0';
+	}
+	fclose(fp);
+
+	const double fc =  2.5e6;	// IF centre / carrier
+	const double fs = 10.0e6;   // Sampling rate
+
+	const int lo_sin[] = {1,1,0,0};
+	const int lo_cos[] = {1,0,0,1};
+
+	double lo_freq = fc, lo_phase = 0, lo_rate = lo_freq/fs*4;
+
+	for (i=0; i<data_len; i++) {
+
+		int t = (int) lo_phase;
+
+		data[i][0] = (raw[i] ^ lo_sin[t]) ? -1:1;
+		data[i][1] = (raw[i] ^ lo_cos[t]) ? -1:1;
+
+		lo_phase += lo_rate;
+		if (lo_phase >= 4) lo_phase -= 4;
 	}
 
 	if(TRACE)
@@ -230,10 +252,10 @@ static struct signal_strength check_satellite(unsigned int sample_freq, fftw_com
 	struct signal_strength stats;
 	const unsigned int len = sample_freq / 1000;
 	const unsigned int fft_len = len / 2 + 1;
-	fftw_complex *prod = fftw_malloc(sizeof(fftw_complex) * len);
+	fftw_complex *prod = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * len);
 	void *ca_buf = fftw_malloc(sizeof(fftw_complex) * fft_len);
-	double *ca_samples = ca_buf;
-	fftw_complex *ca_fft = ca_buf;
+	double *ca_samples = (double *) ca_buf;
+	fftw_complex *ca_fft = (fftw_complex *) ca_buf;
 	const double samples_per_chip = sample_freq / 1023e3;
 	const int max_shift = 5000 * data_fft_len / sample_freq;
 	unsigned int i;
@@ -303,15 +325,16 @@ static struct signal_strength check_satellite(unsigned int sample_freq, fftw_com
 	return stats;
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-	const unsigned int sample_freq = 4000000;
-	const unsigned int data_len = sample_freq * 20 / 1000;
-	fftw_complex *data = fftw_malloc(sizeof(fftw_complex) * data_len);
+	const unsigned int sample_freq = 10000000;
+	const unsigned int data_len = sample_freq * 2 / 1000;
+	fftw_complex *data = (fftw_complex *) fftw_malloc(sizeof(fftw_complex) * data_len);
 	struct signal_strength signals[sizeof SV / sizeof *SV];
 	int i;
 
-	read_samples(data, data_len);
+	read_samples(data, data_len, argc==2? argv[1] : "raw_Jan12_2308.txt");
+
 	for(i = 0; i < (sizeof SV / sizeof *SV); ++i)
 		signals[i] = check_satellite(sample_freq, data, data_len, i);
 
