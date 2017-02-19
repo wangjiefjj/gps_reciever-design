@@ -38,8 +38,10 @@ class GoldCode:
         self.g2 = deque(1 for i in range(10))
         self.index = 0
 
-    def getCode(self, num, zero = False):
+    def getCode(self, num, zero = False, samplesPerChip = 1):
         #Returns a list of bits that form the Gold Code PRN of the designated satellite
+        #zero flag determines whether 0 or -1 is returned
+        
         g = []
 
         for i in range(num):
@@ -53,9 +55,12 @@ class GoldCode:
                 if i==0:
                 g[n]=-1
         
+        if (samplesPerChip > 1 ):
+            # Repeat each chip to match our ADC sample frequency
+            CACodeSampled = np.repeat(CACode, samplesPerChip)
         return g
 
-    def getSegment(self, first, last, zero = False):
+    def getSegment(self, first, last, zero = False, samplesPerChip = 1):
         #Works like getCode(), but returns a specific segment of the Gold Code
 
         g = []
@@ -80,5 +85,8 @@ class GoldCode:
                 g[n]=-1
         
 
+        if (samplesPerChip > 1 ):
+            # Repeat each chip to match our ADC sample frequency
+            CACodeSampled = np.repeat(CACode, samplesPerChip)
         return g
 
